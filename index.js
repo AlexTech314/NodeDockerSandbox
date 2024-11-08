@@ -1,41 +1,35 @@
 const express = require('express');
-const bodyParser = require('body-parser'); // Middleware to parse JSON bodies
+const bodyParser = require('body-parser');
+const vm = require('vm');
 
 const app = express();
 const port = 3000;
 
-app.use(bodyParser.json()); // Parse JSON bodies
-
-app.get('/', (req, res) => {
-  res.send('App running...');
-});
+app.use(bodyParser.json());
 
 app.post('/execute', (req, res) => {
   const { code } = req.body;
-  let output = [];
-  let result = null;
+  let logs = [];
+  let result;
 
-  // Override console.log to capture output
-  const originalConsoleLog = console.log;
-  console.log = (...args) => {
-    output.push(args.join(' '));
-    originalConsoleLog.apply(console, args);
+  // Custom console.log to capture logs
+  const customConsole = {
+    log: (...args) => {
+      logs.push(args.join(' '));
+    }
   };
 
-  try {
-    // Execute the code and capture the result
-    result = eval(`
-      (() => {
-        ${code}
-      })()
-    `);
+  // Define the context with our custom console
+  const context = { console: customConsole };
+  vm.createContext(context); // Create a new VM context
 
-    // Restore the original console.log and return the output
-    console.log = originalConsoleLog;
-    res.send({ result, logs: output.join('\n') });
+  try {
+    // Run the code directly without wrapping in a function
+    result = new vm.Script(`(() => { ${code} })()`).runInContext(context, { timeout: 10000 });
+    
+    // Return both logs and the result
+    res.send({ result, logs: logs.join('\n') });
   } catch (error) {
-    // Restore the original console.log in case of error
-    console.log = originalConsoleLog;
     res.status(400).send({ error: error.message });
   }
 });
